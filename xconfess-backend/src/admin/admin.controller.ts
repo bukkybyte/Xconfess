@@ -1,4 +1,4 @@
-﻿import {
+import {
   Controller,
   Get,
   Patch,
@@ -136,7 +136,7 @@ export class AdminController {
 
   // Reports
   @Get('reports')
-  @ApiOperation({ summary: 'List reports with optional filters' })
+  @ApiOperation({ summary: 'List reports with optional filters and cursor pagination' })
   @ApiQuery({
     name: 'status',
     required: false,
@@ -161,14 +161,14 @@ export class AdminController {
     type: String,
     example: '2026-04-30',
   })
-  @ApiQuery({ name: 'limit', required: false, type: Number, example: 50 })
-  @ApiQuery({ name: 'offset', required: false, type: Number, example: 0 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
+  @ApiQuery({ name: 'cursor', required: false, type: String, description: 'Opaque cursor for cursor-based pagination' })
   @ApiResponse({
     status: 200,
     description: 'Paginated report list.',
     schema: {
       example: {
-        reports: [
+        data: [
           {
             id: 'abc-123',
             confessionId: 'def-456',
@@ -176,9 +176,9 @@ export class AdminController {
             type: 'spam',
           },
         ],
-        total: 1,
-        limit: 50,
-        offset: 0,
+        nextCursor: 'eyJpZCI6MTIzLCJjcmVhdGVkQXQiOiIyMDI0LTAxLTAxVDAwOjAwOjAwWiJ9',
+        hasMore: false,
+        limit: 20,
       },
     },
   })
@@ -188,25 +188,18 @@ export class AdminController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
+    @Query('cursor') cursor?: string,
   ) {
     const start = startDate ? new Date(startDate) : undefined;
     const end = endDate ? new Date(endDate) : undefined;
-    const [reports, total] = await this.adminService.getReports(
+    return this.adminService.getReportsCursor(
       status,
       type,
       start,
       end,
-      parseInt(limit || '50', 10),
-      parseInt(offset || '0', 10),
+      parseInt(limit || '20', 10),
+      cursor,
     );
-
-    return {
-      reports,
-      total,
-      limit: parseInt(limit || '50', 10),
-      offset: parseInt(offset || '0', 10),
-    };
   }
 
   @Get('reports/stats')
@@ -242,7 +235,7 @@ export class AdminController {
   @ApiBody({
     schema: {
       example: {
-        resolutionNotes: 'Content removed â€” violates community guidelines.',
+        resolutionNotes: 'Content removed — violates community guidelines.',
         templateId: 3,
       },
     },
@@ -289,7 +282,7 @@ export class AdminController {
     schema: {
       example: {
         reportIds: ['abc-123', 'def-456'],
-        notes: 'Batch resolution â€” content removed.',
+        notes: 'Batch resolution — content removed.',
       },
     },
   })
@@ -339,6 +332,9 @@ export class AdminController {
 
   @Patch('confessions/:id/hide')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Hide a confession from public view (admin only)' })
+  @ApiParam({ name: 'id', description: 'Confession UUID' })
+  @ApiResponse({ status: 200, description: 'Confession hidden.' })
   async hideConfession(
     @Param('id') id: string,
     @Body() body: { reason?: string },
@@ -355,6 +351,9 @@ export class AdminController {
 
   @Patch('confessions/:id/unhide')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Unhide a confession (admin only)' })
+  @ApiParam({ name: 'id', description: 'Confession UUID' })
+  @ApiResponse({ status: 200, description: 'Confession unhidden.' })
   async unhideConfession(
     @Param('id') id: string,
     @GetUser('id') adminId: number,
@@ -365,37 +364,35 @@ export class AdminController {
 
   // Users
   @Get('users/search')
-  @ApiOperation({ summary: 'Search users by username or email fragment' })
-  @ApiQuery({ name: 'q', required: false, description: 'Search query', example: 'alice' })
-  @ApiQuery({ name: 'sortBy', required: false, enum: ['createdAt', 'username', 'role', 'status'] })
-  @ApiQuery({ name: 'sortOrder', required: false, enum: ['ASC', 'DESC'] })
-  @ApiQuery({ name: 'limit', required: false, type: Number, example: 50 })
-  @ApiQuery({ name: 'offset', required: false, type: Number, example: 0 })
+  @ApiOperation({ summary: 'Search users by username with cursor pagination' })
+  @ApiQuery({ name: 'q', description: 'Search query', example: 'alice' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
+  @ApiQuery({ name: 'cursor', required: false, type: String, description: 'Opaque cursor for cursor-based pagination' })
   @ApiResponse({
     status: 200,
-    description: 'Matching users.',
+    description: 'Matching users with cursor pagination.',
     schema: {
       example: {
-        users: [{ id: 1, username: 'alice_42', role: 'user' }],
-        total: 1,
+        data: [{ id: 1, username: 'alice_42', role: 'user' }],
+        nextCursor: null,
+        hasMore: false,
+        limit: 20,
       },
     },
   })
   async searchUsers(
     @Query('q') query: string,
     @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-    @Query('sortBy') sortBy?: 'createdAt' | 'username' | 'role' | 'status',
-    @Query('sortOrder') sortOrder?: 'ASC' | 'DESC',
+    @Query('cursor') cursor?: string,
   ) {
-    const [users, total] = await this.adminService.searchUsers(
-      query || '',
-      parseInt(limit || '50', 10),
-      parseInt(offset || '0', 10),
-      sortBy,
-      sortOrder,
+    if (!query) {
+      return { data: [], nextCursor: null, hasMore: false, limit: 20 };
+    }
+    return this.adminService.searchUsersCursor(
+      query,
+      parseInt(limit || '20', 10),
+      cursor,
     );
-    return { users, total };
   }
 
   @Get('users/:id/history')
@@ -403,7 +400,6 @@ export class AdminController {
     return this.adminService.getUserHistory(parseInt(id, 10));
   }
 
-  
   @Post('users/unlock-account')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Unlock a locked account by email' })

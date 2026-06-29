@@ -22,6 +22,8 @@ import { NetworkBanner } from "@/app/components/common/NetworkBanner";
 import { WebSocketIndicator } from "@/app/components/common/WebSocketIndicator";
 
 import { NetworkStatusProvider } from "@/app/lib/providers/NetworkStatusProvider";
+import ShortcutsProvider from "@/app/components/common/ShortcutsProvider";
+import { WalletProvider } from "@/lib/providers/WalletProvider";
 
 export default function RootLayout({
   children,
@@ -44,12 +46,16 @@ export default function RootLayout({
         <ErrorBoundary>
           <ThemeProvider>
             <AuthProvider>
+              <WalletProvider>
               <NetworkStatusProvider>
                 <QueryProvider>
                   <ToastProvider>
+                    <ShortcutsProvider>
                     <NetworkBanner />
                     <WebSocketIndicator />
                     {children}
+
+                    </ShortcutsProvider>
 
                     {/* Onboarding system */}
                     <OnboardingFlow />
@@ -57,6 +63,7 @@ export default function RootLayout({
                   </ToastProvider>
                 </QueryProvider>
               </NetworkStatusProvider>
+              </WalletProvider>
             </AuthProvider>
           </ThemeProvider>
         </ErrorBoundary>
